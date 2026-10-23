@@ -15,7 +15,7 @@ kokot が作った Claude Code 用の mod 集です。
 2. ターミナルで次を順に打つ
 
 ```bash
-claude plugin marketplace add nijisalasa/claude-mods
+claude plugin marketplace add kokotosu/claude-mods
 ```
 
 ```bash
