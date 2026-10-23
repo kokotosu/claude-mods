@@ -11,8 +11,10 @@ kokot が作った Claude Code 用の mod 集です。
 
 ## 別のパソコンに入れる方法
 
-1. そのパソコンで GitHub にログインしておく（このリポジトリは非公開なので）
-2. ターミナルで次を順に打つ
+ログインはいりません。ほしい mod だけ選んで入れられます。
+
+1. ターミナルで、まず棚の登録を打つ（1回だけ）
+2. そのあと、ほしい mod の行だけ打つ
 
 ```bash
 claude plugin marketplace add kokotosu/claude-mods
@@ -35,6 +37,8 @@ claude plugin install push-to-talk@kokot-claude-mods
 ```
 
 3. Claude を開き直す
+
+Claude に頼むなら「GitHub の kokotosu/claude-mods から chat-time だけ入れて」のように言えば入れてくれる。
 
 ## 更新したとき
 
