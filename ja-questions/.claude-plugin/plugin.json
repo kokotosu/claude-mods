@@ -1,0 +1,5 @@
+{
+  "name": "ja-questions",
+  "version": "0.1.0",
+  "description": "Claude からの質問が英語だったら、表示する前に日本語へ翻訳する"
+}

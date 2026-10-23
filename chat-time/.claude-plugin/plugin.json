@@ -1,0 +1,7 @@
+{
+  "name": "chat-time",
+  "version": "0.3.0",
+  "description": "LINEのように、チャットの各メッセージ（自分とClaude）の下に送った日時を表示する",
+  "author": { "name": "kokot" },
+  "types": "./types/index.d.ts"
+}

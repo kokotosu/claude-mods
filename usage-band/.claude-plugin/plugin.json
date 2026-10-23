@@ -1,0 +1,7 @@
+{
+  "name": "usage-band",
+  "version": "0.15.0",
+  "description": "プロンプト上に残り使用量(5時間枠・週枠・コンテキスト)をピクセル風アニメーションの帯で常時表示",
+  "author": { "name": "kokot" },
+  "types": "./types/index.d.ts"
+}

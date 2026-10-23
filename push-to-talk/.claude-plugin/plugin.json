@@ -1,0 +1,26 @@
+{
+  "name": "push-to-talk",
+  "version": "0.3.0",
+  "description": "決めたキーを押している間だけ録音し、話した内容を入力欄に入れる",
+  "author": {
+    "name": "kokot"
+  },
+  "userConfig": {
+    "key": {
+      "type": "string",
+      "title": "押して話すキー",
+      "description": "長押しで録音するキー",
+      "default": "RightCtrl",
+      "options": [
+        "RightCtrl",
+        "RightAlt",
+        "RightShift",
+        "F8",
+        "F9",
+        "F10",
+        "Muhenkan",
+        "Henkan"
+      ]
+    }
+  }
+}

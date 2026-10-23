@@ -1,0 +1,11 @@
+{
+  "name": "kokot-claude-mods",
+  "owner": { "name": "kokot" },
+  "description": "kokot が作った Claude Code 用の mod 集",
+  "plugins": [
+    { "name": "usage-band", "source": "./usage-band" },
+    { "name": "chat-time", "source": "./chat-time" },
+    { "name": "ja-questions", "source": "./ja-questions" },
+    { "name": "push-to-talk", "source": "./push-to-talk" }
+  ]
+}
