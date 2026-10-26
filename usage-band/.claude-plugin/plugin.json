@@ -1,7 +1,9 @@
 {
   "name": "usage-band",
-  "version": "0.15.0",
-  "description": "プロンプト上に残り使用量(5時間枠・週枠・コンテキスト)をピクセル風アニメーションの帯で常時表示",
-  "author": { "name": "kokot" },
+  "version": "0.21.1",
+  "description": "プロンプト上に、7日間のトークンを何に使ったかの円グラフと、残り使用量(5時間枠・週枠・コンテキスト)の帯を常時表示",
+  "author": {
+    "name": "kokot"
+  },
   "types": "./types/index.d.ts"
 }

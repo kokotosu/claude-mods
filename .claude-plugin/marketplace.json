@@ -6,6 +6,7 @@
     { "name": "usage-band", "source": "./usage-band" },
     { "name": "chat-time", "source": "./chat-time" },
     { "name": "ja-questions", "source": "./ja-questions" },
-    { "name": "push-to-talk", "source": "./push-to-talk" }
+    { "name": "push-to-talk", "source": "./push-to-talk" },
+    { "name": "shield", "source": "./shield" }
   ]
 }

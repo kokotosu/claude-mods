@@ -1,0 +1,9 @@
+{
+  "name": "shield",
+  "version": "0.6.0",
+  "description": "危ない操作は止めて確認し、Claude が書いたファイルは自動で構文チェックする。入力欄の上に、結果と、ほかの作業中のチャットを表示",
+  "author": {
+    "name": "kokot"
+  },
+  "types": "./types/index.d.ts"
+}

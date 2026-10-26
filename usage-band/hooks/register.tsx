@@ -1,15 +1,22 @@
 import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit } from 'claude-code'
 
-import type { Figure, Pose } from '../types'
-import { clawd, SCENE_HEIGHT } from './clawd'
+import type { Chart } from '../types'
+import { describeChart, donut } from './donut'
 import { FULL_HEIGHT, cells, describe, svg, toMeters } from './draw'
 
 const meters = { plugin: 'usage-band', key: 'meters' } as const
-const figure = { plugin: 'usage-band', key: 'figure' } as const
-const ASLEEP: Figure = { pose: 'doze', note: '' }
+const chart = { plugin: 'usage-band', key: 'chart' } as const
 const hint = { plugin: 'usage-band', key: 'hint' } as const
-// How long Clawd cheers a finished turn before it sleeps.
-const CHEER_MS = 1800
+// How long after a turn ends the chat's name is looked at for its mark.
+const NAME_DELAY_MS = 1800
+
+// What the tokens went on is added up this often, by one session for all:
+// a newer sum another session left in the store is used as it is.
+const CHART_KEY = 'chart'
+const CHART_DAYS = 7
+const CHART_EVERY_MS = 5 * 60_000
+// The roles the chart can name; the rest are only summed.
+const CHART_GROUPS = 12
 
 const RASTER_KEY = 'bar'
 const FRAME_MS = 150
@@ -35,29 +42,42 @@ const afterResets = (limits: SessionRateLimit[], now: number) =>
 // Module state: a reload starts both over, and session.start fills them again.
 let context: SessionContextUsage = { window: 0 }
 let sharedAt = 0
-// The pose last struck, so a stream of chunks asks the host only on a change.
-let struck = ''
+let isTallying = false
 
-// Tools that only look something up; every other tool changes or runs something.
-const LOOKUPS = /^(Read|Grep|Glob|WebSearch|WebFetch|ToolSearch|Agent|Task|Skill|NotebookRead)$|(search|read|get|list|fetch|find|query|view|status)/i
+const isChart = (value: unknown): value is Chart =>
+  typeof value === 'object' && value !== null && Array.isArray((value as Chart).groups)
 
-// A tool's name as the label shows it: an MCP tool's own name, kept short.
-const named = (tool: string) => (tool.split('__').pop() ?? tool).slice(0, 28)
+// Adds up the transcripts with the script beside this module, unless a sum
+// fresh enough is in the store already, and shows it. Failing leaves the last
+// sum showing, or none.
+async function tally($: EngineInterface) {
+  if (isTallying) return
+  isTallying = true
+  try {
+    const now = await $.clock.now()
+    const stored = await $.store.get(CHART_KEY)
+    let sum = isChart(stored) && now - stored.at < CHART_EVERY_MS - 10_000 ? stored : null
 
-// Clawd's pose is the session's state, not the module's: it outlasts a reload,
-// and writing it redraws the band.
-async function strike($: EngineInterface, pose: Pose, note = '') {
-  if (struck === `${pose} ${note}`) return
-  struck = `${pose} ${note}`
+    if (sum === null) {
+      const { exitCode, stdout } = await $.process.run(
+        ['node', `${$.plugin.root}/hooks/tally.mjs`, String(CHART_DAYS)],
+        { timeoutMs: 5 * 60_000 },
+      )
+      const out: unknown = exitCode === 0 ? JSON.parse(stdout) : null
+      if (!isChart(out)) return
+      sum = { at: out.at, days: out.days, groups: out.groups.slice(0, CHART_GROUPS) }
+      // The rest are summed into one, so the shares stay true.
+      const rest = out.groups.slice(CHART_GROUPS).reduce((total, group) => total + group.tokens, 0)
+      if (rest > 0) sum.groups.push({ name: 'その他', tokens: rest })
+      await $.store.set(CHART_KEY, sum)
+    }
 
-  const { value = ASLEEP } = await $.state.get(figure)
-  if (value.pose !== pose || value.note !== note) await $.state.set(figure, { pose, note })
-}
-
-// The cheer over, it sleeps, unless another turn has begun meanwhile.
-async function rest($: EngineInterface) {
-  const { value = ASLEEP } = await $.state.get(figure)
-  if (value.pose === 'done') await strike($, 'doze')
+    await $.state.set(chart, sum)
+  } catch {
+    // No node, or the transcripts unreadable: the meters show on their own.
+  } finally {
+    isTallying = false
+  }
 }
 
 // The marks a chat's name may begin with, one color each, and the table that
@@ -240,7 +260,11 @@ export const register: Register = on => {
     // A chat reopened under a name with no mark gets it back.
     $.clock.after(0, () => {
       void colorName($)
+      void tally($)
     })
+    $.clock.every(CHART_EVERY_MS, () => tally($))
+    // The time to each reset counts down by the minute.
+    $.clock.every(60_000, () => $.ui.invalidate('ui.render'))
 
     $.clock.every(FRAME_MS, async () => {
       if (mounted === null) return
@@ -282,8 +306,6 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    await strike($, 'think')
-
     const { value: suggested = '' } = await $.state.get(hint)
     if (suggested !== '') await $.state.set(hint, '')
 
@@ -294,42 +316,12 @@ export const register: Register = on => {
     // A subagent's turn ending is not the chat's.
     if (e.agentId !== undefined) return next(e)
 
-    await strike($, e.reason === 'answer' ? 'done' : 'doze')
     // The app names a chat during its first turns: the mark follows the name.
-    $.clock.after(CHEER_MS, () => {
-      void rest($)
+    $.clock.after(NAME_DELAY_MS, () => {
       void colorName($)
     })
 
     return next(e)
-  })
-
-  // What the main conversation's model is doing picks the pose.
-  on('turn.step', async function* ($, e, next) {
-    if (e.agentId !== undefined) return yield* next(e)
-
-    await strike($, 'think')
-    const stream = next(e)
-    for await (const chunk of stream) {
-      if (chunk.kind === 'text') await strike($, 'talk')
-      if (chunk.kind === 'thinking') await strike($, 'think')
-      yield chunk
-    }
-
-    return await stream.result
-  })
-
-  on('tool.call', async ($, e, next) => {
-    const tool = String(e.tool)
-    // The mod's own rename is not the model at work.
-    if (tool === RENAME) return next(e)
-
-    await strike($, LOOKUPS.test(tool) ? 'research' : 'work', named(tool))
-    try {
-      return await next(e)
-    } finally {
-      await strike($, 'think')
-    }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -350,24 +342,25 @@ export const register: Register = on => {
     }
 
     if (e.surface === 'desktop') {
-      const { Svg } = $.ui.resolve(e)
+      const { Box, Svg } = $.ui.resolve(e)
 
       // The slot's width is known only in cells; a cell is about this wide.
       const width = Math.max(240, Math.round(e.props.bodyColumns * CELL_PX))
-      const { value: standing = ASLEEP } = await $.state.get(figure)
-      // While a turn runs it is never asleep; between turns it only cheers or sleeps.
-      const resting = standing.pose === 'doze' || standing.pose === 'done'
-      const pose = e.props.isWorking ? (resting ? 'think' : standing.pose) : resting ? standing.pose : 'doze'
-      const character = clawd(pose, SCENE_HEIGHT, pose === standing.pose ? standing.note : '')
+      const { value: sum = null } = await $.state.get(chart)
+      const said = [describeChart(sum), describe(current, await $.clock.now())].filter(part => part !== '').join(' / ')
 
+      // Another mod's strip (shield's) may be drawn beneath this one's.
       return (
-        <Svg
-          source={svg(current, width, character)}
-          alt={describe(current)}
-          width={width}
-          height={FULL_HEIGHT}
-          isInteractive
-        />
+        <Box flexDirection="column">
+          {await next(e)}
+          <Svg
+            source={svg(current, width, donut(sum, width, e.props.isWorking), e.props.isWorking, await $.clock.now())}
+            alt={said}
+            width={width}
+            height={FULL_HEIGHT}
+            isInteractive
+          />
+        </Box>
       )
     }
 
