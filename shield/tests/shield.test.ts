@@ -64,6 +64,8 @@ test('dangerous commands are told from everyday ones', () => {
     'rm -rf "my folder"',
   ]) {
     expect([command, dangerOf(command) !== null]).toEqual([command, true])
+    // Every danger comes with why it is one.
+    expect([command, (dangerOf(command)?.why ?? '').length > 10]).toEqual([command, true])
   }
 
   for (const command of [
@@ -118,15 +120,20 @@ test('JSON mistakes are found on their line', () => {
   expect(json('[1, 2')).toMatchObject({ isOk: false })
 })
 
+// The questions the shield asked, in the last test's host.
+const asked: string[] = []
+
 // The person's answer to the shield's question, and the commands that ran.
 function host(on: Parameters<Parameters<typeof test>[1]>[1], answer: string | null) {
   const ran: string[] = []
+  asked.length = 0
   // The engine's own band, which the strip sits on.
   on('ui.render', () => ({ type: 'engine', ref: 1 }) as never)
   on('tool.call', (_, e) => {
     if (e.tool === 'AskUserQuestion') {
-      if (answer === null) return { deny: 'dismissed' }
       const question = (e as { questions: { question: string }[] }).questions[0]?.question ?? ''
+      asked.push(question)
+      if (answer === null) return { deny: 'dismissed' }
       return { result: { questions: [], answers: { [question]: answer } } as never, text: answer }
     }
     ran.push(String((e as { command?: unknown; file_path?: unknown }).command ?? (e as { file_path?: unknown }).file_path))
@@ -140,7 +147,13 @@ test('a dangerous command waits, and a no stops it', async ($, on) => {
   const ran = host(on, 'やめる')
 
   const result = await $.tool.call({ tool: 'Bash', command: 'rm -rf build' })
+  // The question says what would happen and why that is dangerous; so does
+  // what Claude is told.
+  expect(asked[0]).toContain('危ない操作です：フォルダごと消す')
+  expect(asked[0]).toContain('なぜ危ないか：中のファイルもまとめて全部消えます。ゴミ箱に入らないので、元に戻せません。')
+  expect(asked[0]).toContain('rm -rf build')
   expect(result.deny).toContain('ユーザーが止めました')
+  expect(result.deny).toContain('危ない理由: 中のファイルもまとめて全部消えます。')
   expect(ran).toEqual([])
   expect(await said($)).toContain('止めました: rm -rf build / 止めた1')
 })

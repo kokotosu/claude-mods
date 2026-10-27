@@ -4,7 +4,7 @@ import type { ShieldEvent, ShieldTally } from '../types'
 import { check, isCheckable } from './check'
 import { otherChats } from './chats'
 import { CHATS_HEIGHT, FRESH_MS, HEIGHT, chatButtons, describe, describeChats, kindSvg, nameOf, svg } from './draw'
-import { dangerOf, isSecret } from './rules'
+import { type Danger, SECRET_WHY, dangerOf, isSecret } from './rules'
 
 const last = { plugin: 'shield', key: 'last' } as const
 const tally = { plugin: 'shield', key: 'tally' } as const
@@ -31,11 +31,13 @@ async function record($: EngineInterface, event: Omit<ShieldEvent, 'at'>, counte
   $.clock.after(FRESH_MS + 100, () => $.ui.invalidate('ui.render'))
 }
 
-// Asks the person before something that cannot be undone. Nobody there to
-// ask, or the question closed, is a no.
-async function permits($: EngineInterface, what: string, subject: string): Promise<boolean> {
+// Asks the person before something that cannot be undone, saying what would
+// happen and why that is dangerous. Nobody there to ask, or the question
+// closed, is a no.
+async function permits($: EngineInterface, { what, why }: Danger, subject: string): Promise<boolean> {
   try {
-    const answer = await $.ui.ask(`危ない操作です（${what}）。実行しますか？\n${subject.slice(0, 300)}`, {
+    const question = `危ない操作です：${what}\nなぜ危ないか：${why}\n\n${subject.slice(0, 300)}\n\n実行しますか？`
+    const answer = await $.ui.ask(question, {
       header: 'SHIELD',
       options: [RUN, STOP],
     })
@@ -45,8 +47,8 @@ async function permits($: EngineInterface, what: string, subject: string): Promi
   }
 }
 
-const stopped = (what: string) =>
-  `SHIELD: この操作（${what}）はユーザーが止めました。実行せずに、別のやり方にするか、どうするかユーザーに聞いてください。`
+const stopped = ({ what, why }: Danger) =>
+  `SHIELD: この操作（${what}）はユーザーが止めました。危ない理由: ${why} 実行せずに、別のやり方にするか、どうするかユーザーに聞いてください。`
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path
 
@@ -55,27 +57,27 @@ async function guardCommand($: EngineInterface, command: string): Promise<string
   const danger = dangerOf(command)
   if (danger === null) return null
 
-  const isAllowed = await permits($, danger.what, command)
+  const isAllowed = await permits($, danger, command)
   await record(
     $,
     { kind: isAllowed ? 'allowed' : 'stopped', subject: command, detail: danger.what },
     [isAllowed ? 'allowed' : 'stopped'],
   )
 
-  return isAllowed ? null : stopped(danger.what)
+  return isAllowed ? null : stopped(danger)
 }
 
 // A file Claude writes: a secret one waits for the person's word, and any
 // one it can read is checked once written. A broken one goes back to Claude.
 async function guardFile($: EngineInterface, path: string): Promise<string | null> {
   if (!isSecret(path)) return null
-  const what = 'パスワードや鍵が入るファイルを書き換える'
-  const isAllowed = await permits($, what, path)
-  await record($, { kind: isAllowed ? 'allowed' : 'stopped', subject: fileName(path), detail: what }, [
+  const danger = { what: 'パスワードや鍵が入るファイルを書き換える', why: SECRET_WHY }
+  const isAllowed = await permits($, danger, path)
+  await record($, { kind: isAllowed ? 'allowed' : 'stopped', subject: fileName(path), detail: danger.what }, [
     isAllowed ? 'allowed' : 'stopped',
   ])
 
-  return isAllowed ? null : stopped(what)
+  return isAllowed ? null : stopped(danger)
 }
 
 async function checkFile<R extends { deny?: unknown; isError?: unknown; context?: readonly string[] }>($: EngineInterface, path: string, ran: R): Promise<R> {
